@@ -333,7 +333,6 @@ concatstrings(num)(...)(val)
 
     impl {
         val = rb_str_concat_literals(num, STACK_ADDR_FROM_TOP(num));
-        POPN(num);
     }
 }
 
@@ -372,7 +371,6 @@ toregexp(opt, cnt)(...)(val)
         VALUE rb_reg_new_ary(VALUE ary, int options);
         VALUE rb_ary_tmp_new_from_values(VALUE, long, const VALUE *);
         const VALUE ary = rb_ary_tmp_new_from_values(0, cnt, STACK_ADDR_FROM_TOP(cnt));
-        POPN(cnt);
         val = rb_reg_new_ary(ary, (int)opt);
         rb_ary_clear(ary);
     }
@@ -388,7 +386,6 @@ newarray(num)(...)(val)
 
     impl {
         val = rb_ary_new4(num, STACK_ADDR_FROM_TOP(num));
-        POPN(num);
     }
 }
 
@@ -509,7 +506,7 @@ dupn(n)(...)(...)
         void *dst = GET_SP();
         void *src = STACK_ADDR_FROM_TOP(n);
 
-        INC_SP(n); /* alloca */
+        /* :FIXME: This writes beyond stack top. */
         MEMCPY(dst, src, VALUE, n);
     }
 }
@@ -578,7 +575,7 @@ setn(n)(..., val)(val)
     attr rb_num_t sp_inc = { return 0; };
 
     impl {
-        TOPN(n-1) = val;
+        TOPN(n) = val;
     }
 }
 
@@ -589,9 +586,7 @@ adjuststack(n)(...)(...)
 {
     attr rb_num_t sp_inc = { return -n; };
 
-    impl {
-        DEC_SP(n);
-    }
+    impl { /* none */ }
 }
 
 /**********************************************************/
@@ -674,6 +669,7 @@ defineclass(id, class_iseq, flags)(cbase, super)(val)
         rb_iseq_check(class_iseq);
 
         /* enter scope */
+        POPN(2); /* wipe out cbase, super */
         vm_push_frame(th, class_iseq, VM_FRAME_MAGIC_CLASS | VM_ENV_FLAG_LOCAL, klass,
                       GET_BLOCK_HANDLER(),
                       (VALUE)vm_cref_push(th, klass, NULL, FALSE),
@@ -745,7 +741,6 @@ opt_newarray_max(num)(...)(val)
 
     impl {
         val = vm_opt_newarray_max(num, STACK_ADDR_FROM_TOP(num));
-        POPN(num);
     }
 }
 
@@ -758,7 +753,6 @@ opt_newarray_min(num)(...)(val)
 
     impl {
         val = vm_opt_newarray_min(num, STACK_ADDR_FROM_TOP(num));
-        POPN(num);
     }
 }
 
@@ -824,15 +818,20 @@ invokeblock(ci)(...)(val)
 
 /* return from this scope. */
 insn
-leave()(val)(val)
+leave()(..., val)(val)
     VALUE val;
 {
+    attr rb_num_t sp_inc = {
+        /* This instruction pops stack frame. */
+        return 1;
+    };
+
     impl {
         if (OPT_CHECKED_RUN) {
             const VALUE *const bp = vm_base_ptr(reg_cfp);
-            if (reg_cfp->sp != bp) {
+            if (reg_cfp->sp - 1 != bp) {
                 rb_bug("Stack consistency error (sp: %"PRIdPTRDIFF", bp: %"PRIdPTRDIFF")",
-                       VM_SP_CNT(th, reg_cfp->sp), VM_SP_CNT(th, bp));
+                       VM_SP_CNT(th, reg_cfp->sp) - 1, VM_SP_CNT(th, bp));
             }
         }
 
@@ -1001,8 +1000,6 @@ opt_plus(ci, cc)(recv, obj)(val)
 
         if (val == Qundef) {
             /* other */
-            PUSH(recv);
-            PUSH(obj);
             CALL_SIMPLE_METHOD(recv);
         }
     }
@@ -1020,8 +1017,6 @@ opt_minus(ci, cc)(recv, obj)(val)
 
         if (val == Qundef) {
             /* other */
-            PUSH(recv);
-            PUSH(obj);
             CALL_SIMPLE_METHOD(recv);
         }
     }
@@ -1039,8 +1034,6 @@ opt_mult(ci, cc)(recv, obj)(val)
 
         if (val == Qundef) {
             /* other */
-            PUSH(recv);
-            PUSH(obj);
             CALL_SIMPLE_METHOD(recv);
         }
     }
@@ -1058,8 +1051,6 @@ opt_div(ci, cc)(recv, obj)(val)
 
         if (val == Qundef) {
             /* other */
-            PUSH(recv);
-            PUSH(obj);
             CALL_SIMPLE_METHOD(recv);
         }
     }
@@ -1077,8 +1068,6 @@ opt_mod(ci, cc)(recv, obj)(val)
 
         if (val == Qundef) {
             /* other */
-            PUSH(recv);
-            PUSH(obj);
             CALL_SIMPLE_METHOD(recv);
         }
     }
@@ -1096,8 +1085,6 @@ opt_eq(ci, cc)(recv, obj)(val)
 
         if (val == Qundef) {
             /* other */
-            PUSH(recv);
-            PUSH(obj);
             CALL_SIMPLE_METHOD(recv);
         }
     }
@@ -1115,8 +1102,6 @@ opt_neq(ci, cc, ci_eq, cc_eq)(recv, obj)(val)
 
         if (val == Qundef) {
             /* other */
-            PUSH(recv);
-            PUSH(obj);
             CALL_SIMPLE_METHOD(recv);
         }
     }
@@ -1134,8 +1119,6 @@ opt_lt(ci, cc)(recv, obj)(val)
 
         if (val == Qundef) {
             /* other */
-            PUSH(recv);
-            PUSH(obj);
             CALL_SIMPLE_METHOD(recv);
         }
     }
@@ -1153,8 +1136,6 @@ opt_le(ci, cc)(recv, obj)(val)
 
         if (val == Qundef) {
             /* other */
-            PUSH(recv);
-            PUSH(obj);
             CALL_SIMPLE_METHOD(recv);
         }
     }
@@ -1172,8 +1153,6 @@ opt_gt(ci, cc)(recv, obj)(val)
 
         if (val == Qundef) {
             /* other */
-            PUSH(recv);
-            PUSH(obj);
             CALL_SIMPLE_METHOD(recv);
         }
     }
@@ -1191,8 +1170,6 @@ opt_ge(ci, cc)(recv, obj)(val)
 
         if (val == Qundef) {
             /* other */
-            PUSH(recv);
-            PUSH(obj);
             CALL_SIMPLE_METHOD(recv);
         }
     }
@@ -1210,8 +1187,6 @@ opt_ltlt(ci, cc)(recv, obj)(val)
 
         if (val == Qundef) {
             /* other */
-            PUSH(recv);
-            PUSH(obj);
             CALL_SIMPLE_METHOD(recv);
         }
     }
@@ -1229,8 +1204,6 @@ opt_aref(ci, cc)(recv, obj)(val)
 
         if (val == Qundef) {
             /* other */
-            PUSH(recv);
-            PUSH(obj);
             CALL_SIMPLE_METHOD(recv);
         }
     }
@@ -1248,9 +1221,6 @@ opt_aset(ci, cc)(recv, obj, set)(val)
 
         if (val == Qundef) {
             /* other */
-            PUSH(recv);
-            PUSH(obj);
-            PUSH(set);
             CALL_SIMPLE_METHOD(recv);
         }
     }
@@ -1264,16 +1234,13 @@ opt_aset_with(ci, cc, key)(recv, val)(val)
     VALUE key, recv, val;
 {
     impl {
-        VALUE tmp = vm_opt_aset_with(recv, key, val);
+        val = vm_opt_aset_with(recv, key, val);
 
-        if (tmp != Qundef) {
-            val = tmp;
-        }
-        else {
+        if (val == Qundef) {
             /* other */
-            PUSH(recv);
-            PUSH(rb_str_resurrect(key));
-            PUSH(val);
+            INC_SP(1);
+            TOPN(0) = TOPN(1);
+            TOPN(1) = rb_str_resurrect(key);
             CALL_SIMPLE_METHOD(recv);
         }
     }
@@ -1291,7 +1258,6 @@ opt_aref_with(ci, cc, key)(recv)(val)
 
         if (val == Qundef) {
             /* other */
-            PUSH(recv);
             PUSH(rb_str_resurrect(key));
             CALL_SIMPLE_METHOD(recv);
         }
@@ -1310,7 +1276,6 @@ opt_length(ci, cc)(recv)(val)
 
         if (val == Qundef) {
             /* other */
-            PUSH(recv);
             CALL_SIMPLE_METHOD(recv);
         }
     }
@@ -1328,7 +1293,6 @@ opt_size(ci, cc)(recv)(val)
 
         if (val == Qundef) {
             /* other */
-            PUSH(recv);
             CALL_SIMPLE_METHOD(recv);
         }
     }
@@ -1346,7 +1310,6 @@ opt_empty_p(ci, cc)(recv)(val)
 
         if (val == Qundef) {
             /* other */
-            PUSH(recv);
             CALL_SIMPLE_METHOD(recv);
         }
     }
@@ -1364,7 +1327,6 @@ opt_succ(ci, cc)(recv)(val)
 
         if (val == Qundef) {
             /* other */
-            PUSH(recv);
             CALL_SIMPLE_METHOD(recv);
         }
     }
@@ -1382,7 +1344,6 @@ opt_not(ci, cc)(recv)(val)
 
         if (val == Qundef) {
             /* other */
-            PUSH(recv);
             CALL_SIMPLE_METHOD(recv);
         }
     }
@@ -1410,8 +1371,6 @@ opt_regexpmatch2(ci, cc)(obj2, obj1)(val)
 
         if (val == Qundef) {
             /* other */
-            PUSH(obj2);
-            PUSH(obj1);
             CALL_SIMPLE_METHOD(obj2);
         }
     }
